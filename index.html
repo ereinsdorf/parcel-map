@@ -9,30 +9,54 @@
 <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
 
 <style>
-body { margin:0; padding:0; }
-#map { position:absolute; top:0; bottom:0; width:100%; }
-.legend {
-  position: absolute;
-  bottom: 30px;
-  left: 10px;
-  background: white;
-  padding: 10px;
-  border-radius: 5px;
-  font-family: sans-serif;
-  font-size: 12px;
-}
-.legend div { margin-bottom: 5px; }
-.legend span {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  margin-right: 6px;
-}
+  body { margin:0; padding:0; }
+  #map { position:absolute; top:0; bottom:0; width:100%; }
+
+  .legend {
+    position: absolute;
+    bottom: 30px;
+    left: 10px;
+    background: white;
+    padding: 10px;
+    border-radius: 5px;
+    font-family: sans-serif;
+    font-size: 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+  }
+  .legend div { margin-bottom: 5px; }
+  .legend span {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    margin-right: 6px;
+  }
+
+  /* Layer toggle menu */
+  .menu {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 1;
+    background: white;
+    padding: 10px 12px;
+    border-radius: 8px;
+    font: 13px/1.3 system-ui, -apple-system, Segoe UI, Roboto, Arial;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+  }
+  .menu label { cursor: pointer; }
 </style>
 </head>
 
 <body>
 <div id="map"></div>
+
+<!-- Layer toggles -->
+<div id="layer-menu" class="menu">
+  <div style="font-weight:700; margin-bottom:6px;">Layers</div>
+  <label><input type="checkbox" id="toggle-solar" checked> Solar</label><br>
+  <label><input type="checkbox" id="toggle-bess" checked> BESS</label><br>
+  <label><input type="checkbox" id="toggle-both" checked> Both</label>
+</div>
 
 <div class="legend">
   <div><span style="background:#FDB813;"></span> Solar</div>
@@ -44,67 +68,110 @@ body { margin:0; padding:0; }
 mapboxgl.accessToken = 'pk.eyJ1IjoiZXZhbnJlaW5zZG9yZiIsImEiOiJjbWt5amlxMDkwN3BiM2ZxOW1vajgya2F2In0.-OiZAHRl8PpyJxyseocygA';
 
 const map = new mapboxgl.Map({
-    container: 'map',
-    style: 'mapbox://styles/mapbox/light-v11',
-    center: [-111.62, 32.82],  // Eloy area
-    zoom: 12
+  container: 'map',
+  style: 'mapbox://styles/mapbox/light-v11',
+  center: [-111.62, 32.82],  // Eloy area
+  zoom: 12
 });
 
 map.on('load', () => {
 
-    map.addSource('parcels', {
-        type: 'geojson',
-        data: 'https://ereinsdorf.github.io/parcel-map/parcels.geojson'
+  map.addSource('parcels', {
+    type: 'geojson',
+    data: 'https://ereinsdorf.github.io/parcel-map/parcels.geojson'
+  });
+
+  // --- Three separate fill layers (toggleable). Add "Both" last so it draws on top. ---
+
+  map.addLayer({
+    id: 'parcels-solar',
+    type: 'fill',
+    source: 'parcels',
+    filter: ['==', ['get', 'Type of Support (Solar, BESS, Both)'], 'Solar'],
+    paint: {
+      'fill-color': '#FDB813',
+      'fill-opacity': 0.6
+    }
+  });
+
+  map.addLayer({
+    id: 'parcels-bess',
+    type: 'fill',
+    source: 'parcels',
+    filter: ['==', ['get', 'Type of Support (Solar, BESS, Both)'], 'BESS'],
+    paint: {
+      'fill-color': '#1f78b4',
+      'fill-opacity': 0.6
+    }
+  });
+
+  map.addLayer({
+    id: 'parcels-both',
+    type: 'fill',
+    source: 'parcels',
+    filter: ['==', ['get', 'Type of Support (Solar, BESS, Both)'], 'Both'],
+    paint: {
+      'fill-color': '#6a3d9a',
+      'fill-opacity': 0.75
+    }
+  });
+
+  // Borders (keep on top of fills)
+  map.addLayer({
+    id: 'parcel-borders',
+    type: 'line',
+    source: 'parcels',
+    paint: {
+      'line-color': '#333',
+      'line-width': 0.5
+    }
+  });
+
+  // --- Toggle logic ---
+  function setLayerVisibility(layerId, visible) {
+    map.setLayoutProperty(layerId, 'visibility', visible ? 'visible' : 'none');
+  }
+
+  document.getElementById('toggle-solar').addEventListener('change', (e) => {
+    setLayerVisibility('parcels-solar', e.target.checked);
+  });
+  document.getElementById('toggle-bess').addEventListener('change', (e) => {
+    setLayerVisibility('parcels-bess', e.target.checked);
+  });
+  document.getElementById('toggle-both').addEventListener('change', (e) => {
+    setLayerVisibility('parcels-both', e.target.checked);
+  });
+
+  // --- Popup handler (works for any of the three layers) ---
+  function parcelPopup(e) {
+    const props = e.features[0].properties || {};
+
+    const name = props.Name || props.NAME || props['Full Name'] || '—';
+    const rawSupport = props['Type of Support (Solar, BESS, Both)'] || '—';
+    const address = props.Address || props.ADDRESS || '—';
+
+    new mapboxgl.Popup()
+      .setLngLat(e.lngLat)
+      .setHTML(`
+        <b>Name:</b> ${name}<br>
+        <b>Support:</b> ${rawSupport}<br>
+        <b>Address:</b> ${address}
+      `)
+      .addTo(map);
+  }
+
+  // Attach click + hover to each fill layer
+  ['parcels-solar', 'parcels-bess', 'parcels-both'].forEach((layerId) => {
+    map.on('click', layerId, parcelPopup);
+
+    map.on('mouseenter', layerId, () => {
+      map.getCanvas().style.cursor = 'pointer';
     });
 
-    map.addLayer({
-        id: 'parcel-fills',
-        type: 'fill',
-        source: 'parcels',
-        paint: {
-            'fill-color': [
-                'match',
-                ['get', 'Type of Support (Solar, BESS, Both)'],
-                'Solar', '#FDB813',
-                'BESS', '#1f78b4',
-                'Both', '#6a3d9a',
-                '#cccccc'
-            ],
-            'fill-opacity': 0.6
-        }
+    map.on('mouseleave', layerId, () => {
+      map.getCanvas().style.cursor = '';
     });
-
-    map.addLayer({
-        id: 'parcel-borders',
-        type: 'line',
-        source: 'parcels',
-        paint: {
-            'line-color': '#333',
-            'line-width': 0.5
-        }
-    });
-
-    // Popup
-    map.on('click', 'parcel-fills', (e) => {
-        const props = e.features[0].properties;
-
-        new mapboxgl.Popup()
-            .setLngLat(e.lngLat)
-            .setHTML(`
-                <b>Name:</b> ${props.Name}<br>
-                <b>Support:</b> ${props['Type of Support (Solar, BESS, Both)']}<br>
-                <b>Address:</b> ${props.Address}
-            `)
-            .addTo(map);
-    });
-
-    map.on('mouseenter', 'parcel-fills', () => {
-        map.getCanvas().style.cursor = 'pointer';
-    });
-
-    map.on('mouseleave', 'parcel-fills', () => {
-        map.getCanvas().style.cursor = '';
-    });
+  });
 
 });
 </script>
