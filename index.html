@@ -91,8 +91,8 @@ map.on('load', () => {
         new mapboxgl.Popup()
             .setLngLat(e.lngLat)
             .setHTML(`
-                <b>Parcel ID:</b> ${props.PARCELID}<br>
-                <b>Support:</b> ${props['Type of Support']}<br>
+                <b>Name:</b> ${props.Name}<br>
+                <b>Support:</b> ${props['Type of Support (Solar, BESS, Both)']}<br>
                 <b>Address:</b> ${props.Address}
             `)
             .addTo(map);
